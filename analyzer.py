@@ -99,6 +99,7 @@ class AnalysisResult:
     raw_response: Optional[str] = None  # 原始响应（调试用）
     search_performed: bool = False  # 是否执行了联网搜索
     data_sources: str = ""  # 数据来源说明
+    model_name: str = ""  # AI 模型名称
     success: bool = True
     error_message: Optional[str] = None
     
@@ -130,6 +131,7 @@ class AnalysisResult:
             'risk_warning': self.risk_warning,
             'buy_reason': self.buy_reason,
             'search_performed': self.search_performed,
+            'model_name': self.model_name,
             'success': self.success,
             'error_message': self.error_message,
         }
@@ -791,7 +793,8 @@ class GeminiAnalyzer:
             result = self._parse_response(response_text, code, name)
             result.raw_response = response_text
             result.search_performed = bool(news_context)
-            
+            result.model_name = self._current_model_name or "unknown"
+
             logger.info(f"[LLM解析] {name}({code}) 分析完成: {result.trend_prediction}, 评分 {result.sentiment_score}")
             
             return result
@@ -809,6 +812,7 @@ class GeminiAnalyzer:
                 risk_warning='分析失败，请稍后重试或手动分析',
                 success=False,
                 error_message=str(e),
+                model_name=self._current_model_name or "unknown",
             )
     
     def _format_prompt(

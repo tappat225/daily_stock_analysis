@@ -235,12 +235,16 @@ class NotificationService:
         """
         if report_date is None:
             report_date = datetime.now().strftime('%Y-%m-%d')
-        
+
+        # 获取所有使用的模型名称
+        model_names = set(r.model_name for r in results if hasattr(r, 'model_name') and r.model_name)
+        model_display = ", ".join(model_names) if model_names else "unknown"
+
         # 标题
         report_lines = [
             f"# 📅 {report_date} A股自选股智能分析报告",
             "",
-            f"> 共分析 **{len(results)}** 只股票 | 报告生成时间：{datetime.now().strftime('%H:%M:%S')}",
+            f"> 共分析 **{len(results)}** 只股票 | 报告生成时间：{datetime.now().strftime('%H:%M:%S')} | 分析模型: **{model_display}**",
             "",
             "---",
             "",
@@ -279,11 +283,12 @@ class NotificationService:
         for result in sorted_results:
             emoji = result.get_emoji()
             confidence_stars = result.get_confidence_stars() if hasattr(result, 'get_confidence_stars') else '⭐⭐'
-            
+            model_info = result.model_name if hasattr(result, 'model_name') and result.model_name else "unknown"
+
             report_lines.extend([
                 f"### {emoji} {result.name} ({result.code})",
                 "",
-                f"**操作建议：{result.operation_advice}** | **综合评分：{result.sentiment_score}分** | **趋势预测：{result.trend_prediction}** | **置信度：{confidence_stars}**",
+                f"**操作建议：{result.operation_advice}** | **综合评分：{result.sentiment_score}分** | **趋势预测：{result.trend_prediction}** | **置信度：{confidence_stars}** | **模型：{model_info}**",
                 "",
             ])
             
@@ -922,11 +927,12 @@ class NotificationService:
         
         # 股票名称
         stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
-        
+        model_info = result.model_name if hasattr(result, 'model_name') and result.model_name else "unknown"
+
         lines = [
             f"## {signal_emoji} {stock_name} ({result.code})",
             "",
-            f"> {report_date} | 评分: **{result.sentiment_score}** | {result.trend_prediction}",
+            f"> {report_date} | 评分: **{result.sentiment_score}** | {result.trend_prediction} | 模型: **{model_info}**",
             "",
         ]
         
