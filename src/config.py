@@ -11,10 +11,13 @@ A股自选股智能分析系统 - 配置管理模块
 """
 
 import os
+import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 from dotenv import load_dotenv, dotenv_values
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,6 +33,7 @@ class Config:
     
     # === 自选股配置 ===
     stock_list: List[str] = field(default_factory=list)
+    stock_name_map: Dict[str, str] = field(default_factory=dict)  # 股票代码到名称的映射（从 YAML 加载）
 
     # === 飞书云文档配置 ===
     feishu_app_id: Optional[str] = None
@@ -261,19 +265,10 @@ class Config:
                 os.environ['HTTPS_PROXY'] = https_proxy
                 os.environ['https_proxy'] = https_proxy
 
-        
-        # 解析自选股列表（逗号分隔）
-        stock_list_str = os.getenv('STOCK_LIST', '')
-        stock_list = [
-            code.strip() 
-            for code in stock_list_str.split(',') 
-            if code.strip()
-        ]
-        
-        # 如果没有配置，使用默认的示例股票
-        if not stock_list:
-            stock_list = ['600519', '000001', '300750']
-        
+
+        # 加载股票配置（优先从 YAML，回退到 .env）
+        stock_list, stock_name_map = cls._load_stock_config()
+
         # 解析搜索引擎 API Keys（支持多个 key，逗号分隔）
         bocha_keys_str = os.getenv('BOCHA_API_KEYS', '')
         bocha_api_keys = [k.strip() for k in bocha_keys_str.split(',') if k.strip()]
@@ -286,6 +281,7 @@ class Config:
         
         return cls(
             stock_list=stock_list,
+            stock_name_map=stock_name_map,
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
@@ -370,7 +366,85 @@ class Config:
             realtime_cache_ttl=int(os.getenv('REALTIME_CACHE_TTL', '600')),
             circuit_breaker_cooldown=int(os.getenv('CIRCUIT_BREAKER_COOLDOWN', '300'))
         )
-    
+
+    @classmethod
+    def _load_stock_config(cls) -> Tuple[List[str], Dict[str, str]]:
+        """
+        加载股票配置（优先从 YAML，回退到 .env）
+
+        Returns:
+            (股票代码列表, 股票名称映射字典)
+        """
+        yaml_path = Path(__file__).parent.parent / 'stocks.yml'
+
+        if yaml_path.exists():
+            try:
+                return cls._load_from_yaml(yaml_path)
+            except Exception as e:
+                logger.error(f"加载 stocks.yml 失败: {e}，回退到 .env STOCK_LIST")
+
+        # 回退到 .env STOCK_LIST
+        logger.info("未找到 stocks.yml，使用 .env STOCK_LIST 配置")
+        stock_list_str = os.getenv('STOCK_LIST', '')
+        stock_list = [code.strip() for code in stock_list_str.split(',') if code.strip()]
+
+        if not stock_list:
+            stock_list = ['600519', '000001', '300750']
+            logger.warning("未配置股票列表，使用默认值")
+
+        return stock_list, {}
+
+    @classmethod
+    def _load_from_yaml(cls, yaml_path: Path) -> Tuple[List[str], Dict[str, str]]:
+        """
+        从 YAML 文件加载股票配置
+
+        Args:
+            yaml_path: YAML 文件路径
+
+        Returns:
+            (股票代码列表, 股票名称映射字典)
+
+        Raises:
+            Exception: YAML 解析失败时抛出异常
+        """
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError("未安装 pyyaml 包，请运行: pip install pyyaml")
+
+        try:
+            with open(yaml_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+
+            if not data or 'stocks' not in data:
+                raise ValueError("YAML 格式无效：缺少 'stocks' 字段")
+
+            stocks = data['stocks']
+            stock_list = []
+            stock_name_map = {}
+
+            for item in stocks:
+                code = item.get('code', '').strip()
+                name = item.get('name', '').strip()
+
+                if not code:
+                    logger.warning(f"跳过无效的股票条目（缺少 code）: {item}")
+                    continue
+
+                stock_list.append(code)
+                if name:
+                    stock_name_map[code] = name
+
+            logger.info(f"从 {yaml_path.name} 加载了 {len(stock_list)} 只股票")
+            return stock_list, stock_name_map
+
+        except FileNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"YAML 解析错误: {e}")
+            raise
+
     @classmethod
     def reset_instance(cls) -> None:
         """重置单例（主要用于测试）"""

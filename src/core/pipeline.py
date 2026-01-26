@@ -155,15 +155,17 @@ class StockAnalysisPipeline:
             AnalysisResult 或 None（如果分析失败）
         """
         try:
-            # 获取股票名称（优先从实时行情获取真实名称）
-            stock_name = STOCK_NAME_MAP.get(code, '')
-            
+            # 获取股票名称（降级链：实时行情 > YAML配置 > 默认名称）
+            from src.config import get_config
+            config = get_config()
+            stock_name = config.stock_name_map.get(code, '')
+
             # Step 1: 获取实时行情（量比、换手率等）- 使用统一入口，自动故障切换
             realtime_quote = None
             try:
                 realtime_quote = self.fetcher_manager.get_realtime_quote(code)
                 if realtime_quote:
-                    # 使用实时行情返回的真实股票名称
+                    # 实时行情的名称优先级更高
                     if realtime_quote.name:
                         stock_name = realtime_quote.name
                     # 兼容不同数据源的字段（有些数据源可能没有 volume_ratio）
@@ -176,10 +178,11 @@ class StockAnalysisPipeline:
                     logger.info(f"[{code}] 实时行情获取失败或已禁用，将使用历史数据进行分析")
             except Exception as e:
                 logger.warning(f"[{code}] 获取实时行情失败: {e}")
-            
+
             # 如果还是没有名称，使用代码作为名称
             if not stock_name:
                 stock_name = f'股票{code}'
+                logger.debug(f"[{code}] 使用默认名称（未配置名称且实时行情获取失败）")
             
             # Step 2: 获取筹码分布 - 使用统一入口，带熔断保护
             chip_data = None
